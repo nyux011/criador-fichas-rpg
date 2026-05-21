@@ -216,14 +216,14 @@ def _secao_narrativa() -> dict:
     st.header("5 · Informações Narrativas")
     col1, col2 = st.columns(2)
     with col1:
-        conceito = st.text_input("Conceito do Personagem", max_chars=120)
-        profissao = st.text_input("Profissão", max_chars=80)
-        medo = st.text_input("Medo Pessoal", max_chars=120)
-        contato = st.text_input("Contato Importante", max_chars=120)
+        conceito = st.text_input("Conceito do Personagem")
+        profissao = st.text_input("Profissão")
+        medo = st.text_area("Medo Pessoal", height=60)
+        contato = st.text_area("Contato Importante", height=60)
     with col2:
         trauma = st.text_area("Trauma ou Segredo", height=88)
         ligacao = st.text_area("Ligação com o Caso", height=88)
-        objetivo = st.text_input("Objetivo Pessoal", max_chars=120)
+        objetivo = st.text_area("Objetivo Pessoal", height=60)
 
     equipamento = st.text_area("Equipamento Inicial", height=100)
     anotacoes = st.text_area("Anotações", height=100)

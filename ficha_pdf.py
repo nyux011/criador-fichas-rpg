@@ -128,7 +128,7 @@ def _titulo_secao(c: Canvas, y: float, texto: str) -> float:
     return y - altura - 4 * mm
 
 
-def _campo_texto(c: Canvas, x: float, y: float, largura: float, label: str, valor: str) -> None:
+def _campo_texto(c: Canvas, x: float, y: float, largura: float, label: str, valor: str) -> float:
     """Desenha um par label + valor em uma 'linha de formulário'.
 
     Args:
@@ -138,6 +138,9 @@ def _campo_texto(c: Canvas, x: float, y: float, largura: float, label: str, valo
         largura: Largura total do campo.
         label: Etiqueta.
         valor: Valor preenchido.
+
+    Returns:
+        Coordenada Y após o campo (para posicionar o próximo elemento).
     """
     c.setFillColor(COR_LABEL)
     c.setFont("Helvetica-Bold", 7.5)
@@ -148,6 +151,7 @@ def _campo_texto(c: Canvas, x: float, y: float, largura: float, label: str, valo
     c.setFillColor(COR_TEXTO)
     c.setFont("Helvetica", 10)
     c.drawString(x, y - 9, valor or "—")
+    return y - 15 * mm
 
 
 def _bloco_multilinha(
@@ -168,7 +172,7 @@ def _bloco_multilinha(
         largura: Largura do bloco.
         label: Etiqueta.
         valor: Texto a inserir.
-        linhas: Quantas linhas de pauta desenhar.
+        linhas: Mínimo de linhas de pauta a desenhar.
 
     Returns:
         Coordenada Y após o bloco.
@@ -178,22 +182,16 @@ def _bloco_multilinha(
     c.drawString(x, y, label.upper())
     y -= 4
     espacamento = 5 * mm
-    c.setStrokeColor(COR_LINHA_FINA)
-    c.setLineWidth(0.3)
-    for i in range(linhas):
-        y_linha = y - (i + 1) * espacamento
-        c.line(x, y_linha, x + largura, y_linha)
 
     c.setFillColor(COR_TEXTO)
     c.setFont("Helvetica", 9.5)
     texto = valor.strip() if valor else ""
+
+    linhas_renderizadas = []
     if texto:
-        # Quebra simples por largura aproximada (caracteres). Suficiente para
-        # campos curtos da ficha; mantém o gerador leve sem dependências extras.
         max_chars = max(1, int(largura / 2.0))
         palavras = texto.split()
         linha_atual = ""
-        linhas_renderizadas = []
         for palavra in palavras:
             tentativa = (linha_atual + " " + palavra).strip()
             if len(tentativa) <= max_chars:
@@ -202,16 +200,25 @@ def _bloco_multilinha(
                 if linha_atual:
                     linhas_renderizadas.append(linha_atual)
                 linha_atual = palavra
-            if len(linhas_renderizadas) >= linhas:
-                break
-        if linha_atual and len(linhas_renderizadas) < linhas:
+        if linha_atual:
             linhas_renderizadas.append(linha_atual)
 
-        for i, linha in enumerate(linhas_renderizadas):
-            y_linha = y - (i + 1) * espacamento + 1.2
-            c.drawString(x + 1, y_linha, linha)
+    # Número de linhas é dinâmico: mínimo é o parâmetro, máximo 15 para evitar overflow
+    num_linhas = max(linhas, min(len(linhas_renderizadas), 15))
 
-    return y - linhas * espacamento - 2 * mm
+    # Desenha as pautas
+    c.setStrokeColor(COR_LINHA_FINA)
+    c.setLineWidth(0.3)
+    for i in range(num_linhas):
+        y_linha = y - (i + 1) * espacamento
+        c.line(x, y_linha, x + largura, y_linha)
+
+    # Renderiza o texto
+    for i, linha in enumerate(linhas_renderizadas[:num_linhas]):
+        y_linha = y - (i + 1) * espacamento + 1.2
+        c.drawString(x + 1, y_linha, linha)
+
+    return y - num_linhas * espacamento - 2 * mm
 
 
 def _desenhar_tabela_atributos(
@@ -314,7 +321,7 @@ def _renderizar_coluna_pericias(
         c.setStrokeColor(COR_DESTAQUE)
         c.setLineWidth(0.4)
         c.line(x, cursor_y - 6, x + largura, cursor_y - 6)
-        cursor_y -= 10
+        cursor_y -= 14
 
         c.setFillColor(COR_TEXTO)
         c.setFont("Helvetica", 9.5)
@@ -328,8 +335,8 @@ def _renderizar_coluna_pericias(
             c.setStrokeColor(COR_LINHA_FINA)
             c.setLineWidth(0.2)
             c.line(x, cursor_y - 1.8, x + largura, cursor_y - 1.8)
-            cursor_y -= 5.2 * mm
-        cursor_y -= 2 * mm
+            cursor_y -= 7.5 * mm
+        cursor_y -= 4 * mm
     return cursor_y
 
 
@@ -404,26 +411,28 @@ def gerar_pdf_ficha(
     y = _desenhar_cabecalho_pagina(
         c,
         "FICHA DE PERSONAGEM — ARQUIVO CONFIDENCIAL",
-        f"Sujeito: {nome_personagem}  ·  Operador: {nome_jogador}",
+        "",
     )
 
     # Dados básicos
     y = _titulo_secao(c, y, "Dados Básicos")
     largura_meio = (LARGURA - 2 * MARGEM_X) / 2 - 3 * mm
-    _campo_texto(c, MARGEM_X, y, largura_meio, "Nome do Personagem", nome_personagem)
+    y_temp = _campo_texto(c, MARGEM_X, y, largura_meio, "Nome do Personagem", nome_personagem)
     _campo_texto(c, MARGEM_X + largura_meio + 6 * mm, y, largura_meio, "Nome do Jogador", nome_jogador)
-    y -= 14
-    _campo_texto(c, MARGEM_X, y, largura_meio, "Conceito", narrativa.get("conceito", ""))
+    y = y_temp
+    y_temp = _campo_texto(c, MARGEM_X, y, largura_meio, "Conceito", narrativa.get("conceito", ""))
     _campo_texto(c, MARGEM_X + largura_meio + 6 * mm, y, largura_meio, "Profissão", narrativa.get("profissao", ""))
-    y -= 18
+    y = y_temp
 
     # Atributos
     y = _titulo_secao(c, y, "Atributos Principais")
     y = _desenhar_tabela_atributos(c, y, atributos)
+    y -= 3 * mm
 
     # Saúde calculada
     y = _titulo_secao(c, y, "Saúde Calculada")
     y = _desenhar_derivados(c, y, derivados)
+    y -= 3 * mm
 
     # Perícias
     y = _titulo_secao(c, y, "Perícias")
@@ -437,7 +446,7 @@ def gerar_pdf_ficha(
     y = _desenhar_cabecalho_pagina(
         c,
         "DOSSIÊ NARRATIVO — ANEXO PSICOLÓGICO",
-        f"Sujeito: {nome_personagem}",
+        "",
     )
 
     y = _titulo_secao(c, y, "Informações Narrativas")
@@ -456,6 +465,7 @@ def gerar_pdf_ficha(
     for label, valor in campos_narrativos:
         linhas = 4 if label in ("Equipamento Inicial", "Anotações") else 2
         y = _bloco_multilinha(c, MARGEM_X, y, largura_full, label, valor, linhas=linhas)
+        y -= 4 * mm
         if y < MARGEM_BASE + 30 * mm:
             _desenhar_rodape(c, 2)
             c.showPage()
@@ -463,7 +473,7 @@ def gerar_pdf_ficha(
             y = _desenhar_cabecalho_pagina(
                 c,
                 "DOSSIÊ NARRATIVO — CONTINUAÇÃO",
-                f"Sujeito: {nome_personagem}",
+                "",
             )
             y = _titulo_secao(c, y, "Informações Narrativas (cont.)")
 
