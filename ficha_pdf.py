@@ -14,6 +14,7 @@ from typing import Dict
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
 from reportlab.pdfgen.canvas import Canvas
 
@@ -32,7 +33,6 @@ COR_TEXTO_HEADER = colors.HexColor("#f4f4f4")
 COR_BORDA = colors.HexColor("#2b2b2b")
 COR_TEXTO = colors.HexColor("#111111")
 COR_LABEL = colors.HexColor("#444444")
-COR_CARIMBO = colors.Color(0.65, 0.05, 0.05, alpha=0.08)
 COR_LINHA_FINA = colors.HexColor("#888888")
 COR_DESTAQUE = colors.HexColor("#7a0a0a")
 
@@ -46,20 +46,6 @@ LARGURA, ALTURA = A4
 # ---------------------------------------------------------------------------
 # Helpers de desenho
 # ---------------------------------------------------------------------------
-
-def _desenhar_carimbo(c: Canvas) -> None:
-    """Desenha o carimbo diagonal 'CONFIDENCIAL' no fundo da página.
-
-    Args:
-        c: Canvas ReportLab da página atual.
-    """
-    c.saveState()
-    c.translate(LARGURA / 2, ALTURA / 2)
-    c.rotate(30)
-    c.setFillColor(COR_CARIMBO)
-    c.setFont("Helvetica-Bold", 90)
-    c.drawCentredString(0, 0, "CONFIDENCIAL")
-    c.restoreState()
 
 
 def _desenhar_cabecalho_pagina(c: Canvas, titulo: str, subtitulo: str) -> float:
@@ -128,8 +114,38 @@ def _titulo_secao(c: Canvas, y: float, texto: str) -> float:
     return y - altura - 4 * mm
 
 
+def _quebrar_texto(texto: str, fonte: str, tamanho: float, largura_max: float) -> list[str]:
+    """Quebra um texto em linhas que cabem dentro de largura_max.
+
+    Args:
+        texto: Texto a quebrar.
+        fonte: Nome da fonte ReportLab (ex.: 'Helvetica').
+        tamanho: Tamanho em pontos.
+        largura_max: Largura máxima disponível em pontos.
+
+    Returns:
+        Lista de linhas, cada uma dentro do limite de largura.
+    """
+    if not texto:
+        return ["—"]
+    palavras = texto.split()
+    linhas: list[str] = []
+    linha_atual = ""
+    for palavra in palavras:
+        tentativa = (linha_atual + " " + palavra).strip()
+        if stringWidth(tentativa, fonte, tamanho) <= largura_max:
+            linha_atual = tentativa
+        else:
+            if linha_atual:
+                linhas.append(linha_atual)
+            linha_atual = palavra
+    if linha_atual:
+        linhas.append(linha_atual)
+    return linhas or ["—"]
+
+
 def _campo_texto(c: Canvas, x: float, y: float, largura: float, label: str, valor: str) -> float:
-    """Desenha um par label + valor em uma 'linha de formulário'.
+    """Desenha um par label + valor com quebra automática de linha.
 
     Args:
         c: Canvas.
@@ -150,8 +166,11 @@ def _campo_texto(c: Canvas, x: float, y: float, largura: float, label: str, valo
     c.line(x, y - 1.5, x + largura, y - 1.5)
     c.setFillColor(COR_TEXTO)
     c.setFont("Helvetica", 10)
-    c.drawString(x, y - 9, valor or "—")
-    return y - 15 * mm
+    altura_linha = 4 * mm
+    linhas = _quebrar_texto(valor, "Helvetica", 10, largura)
+    for i, linha in enumerate(linhas):
+        c.drawString(x, y - 9 - i * altura_linha, linha)
+    return y - 9 - (len(linhas) - 1) * altura_linha - 6 * mm
 
 
 def _bloco_multilinha(
@@ -407,7 +426,6 @@ def gerar_pdf_ficha(
     derivados = calcular_derivados(atributos)
 
     # ---- Página 1 ---------------------------------------------------------
-    _desenhar_carimbo(c)
     y = _desenhar_cabecalho_pagina(
         c,
         "FICHA DE PERSONAGEM — ARQUIVO CONFIDENCIAL",
@@ -417,12 +435,14 @@ def gerar_pdf_ficha(
     # Dados básicos
     y = _titulo_secao(c, y, "Dados Básicos")
     largura_meio = (LARGURA - 2 * MARGEM_X) / 2 - 3 * mm
-    y_temp = _campo_texto(c, MARGEM_X, y, largura_meio, "Nome do Personagem", nome_personagem)
-    _campo_texto(c, MARGEM_X + largura_meio + 6 * mm, y, largura_meio, "Nome do Jogador", nome_jogador)
-    y = y_temp
-    y_temp = _campo_texto(c, MARGEM_X, y, largura_meio, "Conceito", narrativa.get("conceito", ""))
-    _campo_texto(c, MARGEM_X + largura_meio + 6 * mm, y, largura_meio, "Profissão", narrativa.get("profissao", ""))
-    y = y_temp
+    y = min(
+        _campo_texto(c, MARGEM_X, y, largura_meio, "Nome do Personagem", nome_personagem),
+        _campo_texto(c, MARGEM_X + largura_meio + 6 * mm, y, largura_meio, "Nome do Jogador", nome_jogador),
+    )
+    y = min(
+        _campo_texto(c, MARGEM_X, y, largura_meio, "Conceito", narrativa.get("conceito", "")),
+        _campo_texto(c, MARGEM_X + largura_meio + 6 * mm, y, largura_meio, "Profissão", narrativa.get("profissao", "")),
+    )
 
     # Atributos
     y = _titulo_secao(c, y, "Atributos Principais")
@@ -442,7 +462,6 @@ def gerar_pdf_ficha(
 
     # ---- Página 2 ---------------------------------------------------------
     c.showPage()
-    _desenhar_carimbo(c)
     y = _desenhar_cabecalho_pagina(
         c,
         "DOSSIÊ NARRATIVO — ANEXO PSICOLÓGICO",
@@ -469,7 +488,6 @@ def gerar_pdf_ficha(
         if y < MARGEM_BASE + 30 * mm:
             _desenhar_rodape(c, 2)
             c.showPage()
-            _desenhar_carimbo(c)
             y = _desenhar_cabecalho_pagina(
                 c,
                 "DOSSIÊ NARRATIVO — CONTINUAÇÃO",
