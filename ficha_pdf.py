@@ -182,62 +182,62 @@ def _bloco_multilinha(
     valor: str,
     linhas: int = 3,
 ) -> float:
-    """Desenha um campo de texto multilinha com pauta.
+    """Desenha um campo narrativo em caixa com quebra automática de texto.
 
     Args:
         c: Canvas.
         x: X inicial.
         y: Y inicial.
         largura: Largura do bloco.
-        label: Etiqueta.
+        label: Etiqueta exibida acima da caixa.
         valor: Texto a inserir.
-        linhas: Mínimo de linhas de pauta a desenhar.
+        linhas: Número mínimo de linhas da caixa (garante espaço mesmo vazio).
 
     Returns:
         Coordenada Y após o bloco.
     """
+    PADDING_X = 3 * mm
+    PADDING_Y = 2.5 * mm
+    ALTURA_LINHA = 4.5 * mm
+
     c.setFillColor(COR_LABEL)
     c.setFont("Helvetica-Bold", 7.5)
     c.drawString(x, y, label.upper())
-    y -= 4
-    espacamento = 5 * mm
+    y -= 3
 
-    c.setFillColor(COR_TEXTO)
-    c.setFont("Helvetica", 9.5)
     texto = valor.strip() if valor else ""
-
-    linhas_renderizadas = []
+    linhas_texto: list[str] = []
     if texto:
-        max_chars = max(1, int(largura / 2.0))
+        largura_interna = largura - 2 * PADDING_X
         palavras = texto.split()
         linha_atual = ""
         for palavra in palavras:
             tentativa = (linha_atual + " " + palavra).strip()
-            if len(tentativa) <= max_chars:
+            if stringWidth(tentativa, "Helvetica", 9.5) <= largura_interna:
                 linha_atual = tentativa
             else:
                 if linha_atual:
-                    linhas_renderizadas.append(linha_atual)
+                    linhas_texto.append(linha_atual)
                 linha_atual = palavra
         if linha_atual:
-            linhas_renderizadas.append(linha_atual)
+            linhas_texto.append(linha_atual)
 
-    # Número de linhas é dinâmico: mínimo é o parâmetro, máximo 15 para evitar overflow
-    num_linhas = max(linhas, min(len(linhas_renderizadas), 15))
+    num_linhas = max(linhas, len(linhas_texto))
+    altura_caixa = num_linhas * ALTURA_LINHA + 2 * PADDING_Y
 
-    # Desenha as pautas
-    c.setStrokeColor(COR_LINHA_FINA)
-    c.setLineWidth(0.3)
-    for i in range(num_linhas):
-        y_linha = y - (i + 1) * espacamento
-        c.line(x, y_linha, x + largura, y_linha)
+    c.setStrokeColor(COR_BORDA)
+    c.setFillColor(colors.white)
+    c.setLineWidth(0.5)
+    c.rect(x, y - altura_caixa, largura, altura_caixa, fill=1, stroke=1)
 
-    # Renderiza o texto
-    for i, linha in enumerate(linhas_renderizadas[:num_linhas]):
-        y_linha = y - (i + 1) * espacamento + 1.2
-        c.drawString(x + 1, y_linha, linha)
+    if linhas_texto:
+        c.setFillColor(COR_TEXTO)
+        c.setFont("Helvetica", 9.5)
+        for i, linha in enumerate(linhas_texto):
+            y_linha = y - PADDING_Y - (i + 1) * ALTURA_LINHA + 1.5
+            c.drawString(x + PADDING_X, y_linha, linha)
 
-    return y - num_linhas * espacamento - 2 * mm
+    return y - altura_caixa - 3 * mm
 
 
 def _desenhar_tabela_atributos(
